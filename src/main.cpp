@@ -16,7 +16,6 @@ static RoboEPTeleop * s_server = NULL;
 
 void stopProcess( int sig )
 {
-  printf("stop process\n");
   if (s_server)
     s_server->stopProcess();
 }

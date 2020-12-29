@@ -119,7 +119,7 @@ bool RoboEPTeleop::getRobotAddress( const string & epcorename )
       timeout.tv_usec = 100000; // 100ms
       select( localMaxFD + 1, &readyFDSet, NULL, NULL, &timeout );
     
-      if (FD_ISSET( bcsocket, &readyFDSet )) {
+      if (isRunning_ && FD_ISSET( bcsocket, &readyFDSet )) {
         recvDataLen = recvfrom( bcsocket, dataBuffer, 200,
                           0, NULL, NULL );
       }
@@ -153,6 +153,7 @@ void RoboEPTeleop::fini()
   nodeSub_.shutdown();
 
   if (connSocket_ != INVALID_SOCKET) {
+    ROS_INFO( "close connection with the robot." );
     write( connSocket_, "quit;", 5 );
     usleep( 20000 );
     close( connSocket_ );
@@ -165,7 +166,7 @@ void RoboEPTeleop::fini()
 
 void RoboEPTeleop::processIncomingData( fd_set * readyFDSet )
 {
-  if (FD_ISSET( connSocket_, readyFDSet )) {
+  if (isRunning_ && FD_ISSET( connSocket_, readyFDSet )) {
     int readLen = (int)read( connSocket_, clientDataBuffer_, 2048 );
     if (readLen <= 0) {
       if (readLen == 0) {
@@ -212,7 +213,6 @@ void RoboEPTeleop::continueProcessing()
     processIncomingData( &readyFDSet );
     ros::spinOnce();
   }
-  printf("out of looop\n");
 }
 
 /*
