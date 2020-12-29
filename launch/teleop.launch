@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="roboep_teleop" type="roboep_teleop" name="roboep_teleop" output="screen">
+    <param name="epcore" type="str" value="esto"/>
+  </node>
+</launch>
