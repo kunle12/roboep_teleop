@@ -19,9 +19,10 @@
 #include <signal.h>
 
 #include <iostream>
-#include <boost/shared_ptr.hpp>
 #include <boost/thread/mutex.hpp>
+
 #include <ros/ros.h>
+#include <ros/callback_queue.h>
 #include "geometry_msgs/Twist.h"
 
 using namespace std;
@@ -54,6 +55,13 @@ private:
   int maxFD_;
   fd_set masterFDSet_;
   unsigned char * clientDataBuffer_;
+
+  boost::mutex mutex_;
+  
+  geometry_msgs::TwistConstPtr twistMsgPtr_;
+
+  AsyncSpinner * cmdDataThread_;
+  CallbackQueue cmdDataQueue_;
 
   bool initRobotConnection( const string & epcoreID );
   bool getRobotAddress( const string & epname );

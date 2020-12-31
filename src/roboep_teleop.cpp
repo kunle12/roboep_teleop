@@ -5,7 +5,8 @@
 //  Created by Xun Wang on 23/12/2020.
 //  Copyright (c) 2020 Xun Wang. All rights reserved.
 //
-#include <ctype.h>
+#include <time.h>
+#include <stdio.h>
 #include "roboep_teleop.h"
 
 #define INVALID_SOCKET  -1
@@ -13,14 +14,41 @@
 
 namespace roboep {
 
+static const int kPublishFreq = 10;
 static const short kCtrlPort = 40923;
 static const short kBCPort = 40926;
+static const float kMaxXSpeed = 3.0;
+static const float kMaxYSpeed = 2.5;
+static const float kMaxThetaSpeed = 30.0;
 
+static inline long timediff_usec( timespec start, timespec end )
+{
+  if ((end.tv_nsec - start.tv_nsec) < 0) {
+    return (end.tv_sec - start.tv_sec - 1) * 1E6 + (1E9 + end.tv_nsec - start.tv_nsec) / 1E3;
+  }
+  else {
+    return (end.tv_sec - start.tv_sec) * 1E6 + (end.tv_nsec - start.tv_nsec) / 1E3;
+  }
+}
+
+static inline float clamp( float val, float max )
+{
+  if (val > max) {
+    return max;
+  }
+  else if (val < -max) {
+    return -max;
+  }
+  else {
+    return val;
+  }
+}
 RoboEPTeleop::RoboEPTeleop() :
   isRunning_( 0 ),
   connSocket_( INVALID_SOCKET ),
   maxFD_( 0 ),
-  clientDataBuffer_( NULL )
+  clientDataBuffer_( NULL ),
+  cmdDataThread_( NULL )
 {
   FD_ZERO( &masterFDSet_ );
 }
@@ -45,7 +73,14 @@ bool RoboEPTeleop::init()
     return false;
   }
 
-  nodeSub_ = priNode_.subscribe( "cmd_vel", 1, &RoboEPTeleop::cmdVelCB, this );
+  ros::SubscribeOptions sopts = ros::SubscribeOptions::create<geometry_msgs::Twist>( "cmd_vel",
+        1, boost::bind( &RoboEPTeleop::cmdVelCB, this, _1 ), ros::VoidPtr(), &cmdDataQueue_ );
+
+  nodeSub_ = priNode_.subscribe( sopts );
+
+  cmdDataThread_ = new ros::AsyncSpinner( 1, &cmdDataQueue_ );
+  cmdDataThread_->start();
+
   return true;
 }
 
@@ -162,6 +197,9 @@ void RoboEPTeleop::fini()
     delete [] clientDataBuffer_;
     clientDataBuffer_ = NULL;
   }
+  cmdDataThread_->stop();
+  delete cmdDataThread_;
+  cmdDataThread_ = NULL;
 }
 
 void RoboEPTeleop::processIncomingData( fd_set * readyFDSet )
@@ -188,7 +226,10 @@ void RoboEPTeleop::processIncomingData( fd_set * readyFDSet )
 
 void RoboEPTeleop::cmdVelCB( const geometry_msgs::TwistConstPtr & msg )
 {
-  //stringstream ss;
+  boost::mutex::scoped_lock lock( mutex_, boost::try_to_lock );
+  if (lock) {
+    twistMsgPtr_ = msg;
+  }
 }
 
 void RoboEPTeleop::stopProcess()
@@ -201,7 +242,18 @@ void RoboEPTeleop::continueProcessing()
   fd_set readyFDSet;
   isRunning_ = 1;
 
+  timespec time1, time2;
+
+  long interval = long( 1.0 / double( kPublishFreq ) * 1E6);
+  long proctime = 0;
+
+  float x, y, theta;
+  int missing_data_cnt = 0;
+  char veldata[200];
+
   while (isRunning_) {
+    clock_gettime( CLOCK_MONOTONIC, &time1 );
+
     struct timeval timeout, timeStamp;
     timeout.tv_sec = 0;
     timeout.tv_usec = 100000; // 100ms
@@ -209,12 +261,48 @@ void RoboEPTeleop::continueProcessing()
     FD_ZERO( &readyFDSet );
     memcpy( &readyFDSet, &masterFDSet_, sizeof( masterFDSet_ ) );
     int maxFD = maxFD_;
+
     select( maxFD+1, &readyFDSet, NULL, NULL, &timeout ); // non-blocking select
+
     processIncomingData( &readyFDSet );
+
     ros::spinOnce();
+
+    // The follow code works best with my own version of bs4 driver
+    { // release the lock asap
+      boost::mutex::scoped_lock lock( mutex_ );
+      if (twistMsgPtr_.get()) {
+        x = clamp( twistMsgPtr_->linear.x * 3, kMaxXSpeed );
+        y = clamp( twistMsgPtr_->linear.y * 2.5, kMaxYSpeed );
+        theta = clamp( twistMsgPtr_->angular.z * 10, kMaxThetaSpeed );
+        missing_data_cnt = 0;
+        twistMsgPtr_.reset();
+      }
+      else if (missing_data_cnt < kPublishFreq * 2) {
+        missing_data_cnt++;
+      }
+    }
+
+    if (!missing_data_cnt) {
+      snprintf( veldata, 200, "chassis speed x %.2f y %.2f z %.2f;", x, y, theta );
+      if (connSocket_ != INVALID_SOCKET) {
+        write( connSocket_, veldata, strlen(veldata) );
+      }
+    }
+    else if (missing_data_cnt >= kPublishFreq * 2) { // more than 2 seconds
+      snprintf( veldata, 200, "chassis wheel w1 0.0 w2 0.0 w3 0.0 w4 0.0;" );
+      if (connSocket_ != INVALID_SOCKET) {
+        write( connSocket_, veldata, strlen(veldata) );
+      }
+    }
+
+    clock_gettime( CLOCK_MONOTONIC, &time2 );
+    proctime = timediff_usec( time1, time2 );
+    //printf( "detect process time %li usec\n",  proctime);
+    if (interval > proctime)
+      usleep( interval - proctime );
   }
 }
-
 /*
 void RoboEPTeleop::setFD( const SOCKET_T & fd )
 {
