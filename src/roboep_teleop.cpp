@@ -98,6 +98,7 @@ bool RoboEPTeleop::initRobotConnection( const string & epcoreID )
   }
 
   if (connect( connSocket_, (struct sockaddr *)&epcoreAddr_, sizeof( epcoreAddr_ ) ) < 0) {
+    ROS_ERROR( "Unable to connect to robomaster ep core." );
     close( connSocket_ );
     connSocket_ = INVALID_SOCKET;
     return false;
@@ -107,6 +108,9 @@ bool RoboEPTeleop::initRobotConnection( const string & epcoreID )
   clientDataBuffer_ = new unsigned char[ROBOTEP_DEFAULT_BUFFER_SIZE];
   // enter command mode
   write( connSocket_, "command;", 8 );
+
+  ROS_INFO( "Connected to robomaster ep core." );
+
   return true;
 }
 
@@ -219,7 +223,7 @@ void RoboEPTeleop::processIncomingData( fd_set * readyFDSet )
       connSocket_ = INVALID_SOCKET;
     }
     else {
-      ROS_INFO( "Receive %s from robot", clientDataBuffer_ );
+      //ROS_INFO( "Receive %s from robot", clientDataBuffer_ );
     }
   }
 }
