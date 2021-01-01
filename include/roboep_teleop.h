@@ -48,6 +48,10 @@ private:
 
   struct sockaddr_in epcoreAddr_;
 
+  float xScale_;
+  float yScale_;
+  float thetaScale_;
+
   Subscriber nodeSub_;
 
   volatile sig_atomic_t isRunning_;

@@ -44,6 +44,9 @@ static inline float clamp( float val, float max )
   }
 }
 RoboEPTeleop::RoboEPTeleop() :
+  xScale_( 0.5 ),
+  yScale_( 0.5 ),
+  thetaScale_( 50 ),
   isRunning_( 0 ),
   connSocket_( INVALID_SOCKET ),
   maxFD_( 0 ),
@@ -65,6 +68,9 @@ bool RoboEPTeleop::init()
   std::string epcoreID;
 
   priNh.param<std::string>( "epcore", epcoreID, "local" );
+  priNh.param<float>( "xscale", xScale_, 0.5 );
+  priNh.param<float>( "yscale", yScale_, 0.5 );
+  priNh.param<float>( "thetascale", thetaScale_, 50 );
 
   ROS_INFO( "EP core name %s", epcoreID.c_str() );
 
@@ -260,7 +266,7 @@ void RoboEPTeleop::continueProcessing()
 
     struct timeval timeout, timeStamp;
     timeout.tv_sec = 0;
-    timeout.tv_usec = 100000; // 100ms
+    timeout.tv_usec = 10000; // 10ms
 
     FD_ZERO( &readyFDSet );
     memcpy( &readyFDSet, &masterFDSet_, sizeof( masterFDSet_ ) );
@@ -276,9 +282,9 @@ void RoboEPTeleop::continueProcessing()
     { // release the lock asap
       boost::mutex::scoped_lock lock( mutex_ );
       if (twistMsgPtr_.get()) {
-        x = clamp( twistMsgPtr_->linear.x * 3, kMaxXSpeed );
-        y = clamp( twistMsgPtr_->linear.y * 2.5, kMaxYSpeed );
-        theta = clamp( twistMsgPtr_->angular.z * 10, kMaxThetaSpeed );
+        x = clamp( twistMsgPtr_->linear.x * xScale_, kMaxXSpeed );
+        y = clamp( twistMsgPtr_->linear.y * -yScale_, kMaxYSpeed );
+        theta = clamp( twistMsgPtr_->angular.z * -thetaScale_, kMaxThetaSpeed );
         missing_data_cnt = 0;
         twistMsgPtr_.reset();
       }

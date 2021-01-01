@@ -1,5 +1,8 @@
 <launch>
   <node pkg="roboep_teleop" type="roboep_teleop" name="roboep_teleop" output="screen">
-    <param name="epcore" type="str" value="esto"/>
+    <param name="epcore" type="str" value="local"/>
+    <param name="xscale" type="float" value="0.25"/>
+    <param name="yscale" type="float" value="0.25"/>
+    <param name="thetascale" type="float" value="50"/>
   </node>
 </launch>
